@@ -397,7 +397,7 @@
             </div>
             <div id="title-screen">
                 <h1>ABYSSAL DUNGEON</h1>
-                <p id="version-info">Version 2.2.0 | Updated: 2026-02-06</p>
+                <p id="version-info">Version 2.3.1 | Updated: 2026-02-06</p>
                 <div id="title-rules">
                     <div class="rules-columns">
                         <div class="rules-col">
@@ -1958,18 +1958,49 @@
             const pgz = Math.floor(playerPos.z / cellSize);
             const viewRadius = getViewRadius();
 
+            // BFS flood fill from player, limited by viewRadius, stops at walls
+            const visible = new Set();
+            const queue = [{ x: pgx, z: pgz, dist: 0 }];
+            visible.add(`${pgx},${pgz}`);
+
+            while (queue.length > 0) {
+                const { x, z, dist } = queue.shift();
+                if (x < 0 || x >= mapSize || z < 0 || z >= mapSize) continue;
+                const cell = map[z] && map[z][x];
+                if (cell === -1) continue; // void
+                if (cell === 1) {
+                    // Wall: mark visible but don't spread through
+                    const strength = 1.0 - (dist / (viewRadius + 1)) * 0.3;
+                    mapMemory[z][x] = Math.min(1.0, Math.max(mapMemory[z][x], strength));
+                    continue;
+                }
+                if (cell === 2) {
+                    // Door: mark visible, but don't spread through if closed
+                    const doorObj = doors.find(d => d.gridX === x && d.gridZ === z);
+                    const strength = 1.0 - (dist / (viewRadius + 1)) * 0.3;
+                    mapMemory[z][x] = Math.min(1.0, Math.max(mapMemory[z][x], strength));
+                    if (doorObj && !doorObj.isOpen) continue;
+                }
+                // Floor or open door
+                const strength = 1.0 - (dist / (viewRadius + 1)) * 0.3;
+                mapMemory[z][x] = Math.min(1.0, Math.max(mapMemory[z][x], strength));
+
+                if (dist >= viewRadius) continue;
+                // Spread to neighbors (4-directional)
+                for (const [dx, dz] of [[0,-1],[0,1],[-1,0],[1,0]]) {
+                    const nx = x + dx, nz = z + dz;
+                    const key = `${nx},${nz}`;
+                    if (!visible.has(key)) {
+                        visible.add(key);
+                        queue.push({ x: nx, z: nz, dist: dist + 1 });
+                    }
+                }
+            }
+
+            // Decay all non-visible cells
             for (let z = 0; z < mapSize; z++) {
                 for (let x = 0; x < mapSize; x++) {
-                    const dx = x - pgx;
-                    const dz = z - pgz;
-                    const dist = Math.sqrt(dx * dx + dz * dz);
-
-                    if (dist <= viewRadius && mapRevealed[z] && mapRevealed[z][x]) {
-                        // Within view AND revealed (not behind closed door/wall): boost memory
-                        const strength = 1.0 - (dist / (viewRadius + 1)) * 0.3;
-                        mapMemory[z][x] = Math.min(1.0, Math.max(mapMemory[z][x], strength));
-                    } else {
-                        // Outside view: decay
+                    if (!visible.has(`${x},${z}`)) {
                         mapMemory[z][x] = Math.max(0, mapMemory[z][x] - MEMORY_DECAY_RATE);
                     }
                 }
