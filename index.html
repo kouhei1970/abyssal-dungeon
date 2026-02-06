@@ -151,6 +151,7 @@
         .item.mpPotion { border-color: #4488ff; background: #001144; }
         .item.shield { border-color: #4444ff; background: #000044; }
         .item.charm { border-color: #44ff44; background: #004400; }
+        .item.torch { border-color: #ff6600; background: #441100; }
         #message {
             position: absolute;
             bottom: 100px;
@@ -412,11 +413,9 @@
                             <h4>MAP FEATURES</h4>
                             <p>Shrine: Grants ATK+5 &amp; MaxHP+20</p>
                             <p>Minimap reveals as you explore and fades over time</p>
-                            <h4>ENEMIES</h4>
-                            <p>Skeleton - Standard</p>
-                            <p>Slime - Splits on death</p>
-                            <p>Wraith - Phases through walls</p>
-                            <p>Golem - Slow but powerful</p>
+                            <h4>TORCH SYSTEM</h4>
+                            <p>Without a torch, visibility is very limited!</p>
+                            <p>Find and use a torch (🔥) to light your way for 60s</p>
                         </div>
                     </div>
                 </div>
@@ -512,7 +511,7 @@
         };
 
         // Three.js setup
-        let scene, camera, renderer;
+        let scene, camera, renderer, playerLight;
         let dungeon = { walls: [], floor: null, ceiling: null };
         let enemies = [];
         let items = [];
@@ -523,9 +522,13 @@
         let shrineLight = null;
         let bossProjectiles = [];
         let mapMemory = [];      // 2D array: memory strength per cell (0.0 = unknown, 1.0 = fresh)
-        const MEMORY_VIEW_RADIUS = 4;   // cells visible around player
-        const MEMORY_DECAY_RATE = 0.0003; // per frame decay
+        const MEMORY_VIEW_RADIUS_DARK = 1;   // cells visible without torch
+        const MEMORY_VIEW_RADIUS_LIT = 5;    // cells visible with torch
+        const MEMORY_DECAY_RATE = 0.0005; // per frame decay (faster)
         const MEMORY_MIN_VISIBLE = 0.05;  // below this, cell is invisible
+        let torchActive = false;
+        let torchEndTime = 0;
+        const TORCH_DURATION = 60000;  // 60 seconds
         let playerPos = { x: 1.5, z: 1.5 };
         let playerAngle = 0;
         let playerPitch = 0;
@@ -542,7 +545,6 @@
         function init() {
             scene = new THREE.Scene();
             scene.background = new THREE.Color(0x0a0a0a);
-            scene.fog = new THREE.Fog(0x0a0a0a, 5, 25);
 
             camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 100);
             camera.position.y = 1.5;
@@ -553,13 +555,16 @@
             document.getElementById('game-container').insertBefore(renderer.domElement, document.getElementById('ui'));
 
             // Lighting
-            const ambient = new THREE.AmbientLight(0x222222);
+            const ambient = new THREE.AmbientLight(0x111111);
             scene.add(ambient);
 
-            const playerLight = new THREE.PointLight(0xffaa55, 1, 15);
+            playerLight = new THREE.PointLight(0xffaa55, 0.3, 4); // dim without torch
             playerLight.position.set(0, 1.5, 0);
             camera.add(playerLight);
             scene.add(camera);
+
+            // Start with dark fog
+            scene.fog = new THREE.Fog(0x0a0a0a, 1, 6);
 
             // Event listeners
             document.addEventListener('keydown', (e) => {
@@ -620,6 +625,8 @@
             game.shrineBuff = false;
             game.shieldBuff = false;
             game.shieldBuffTime = 0;
+            torchActive = false;
+            torchEndTime = 0;
 
             document.getElementById('title-screen').style.display = 'none';
             document.getElementById('boss-hp').style.display = 'none';
@@ -792,29 +799,35 @@
                 if (idx !== -1) openSpaces.splice(idx, 1);
             }
 
+            // Spawn torch item (guaranteed 1 per floor, placed early for player to find)
+            if (openSpaces.length > 0) {
+                // Place torch not too far from player (within first third of sorted-by-distance spaces)
+                const playerSpawnForTorch = { x: Math.floor(playerPos.x / cellSize), z: Math.floor(playerPos.z / cellSize) };
+                const torchSpaces = [...openSpaces].sort((a, b) => {
+                    const distA = Math.abs(a.x - playerSpawnForTorch.x) + Math.abs(a.z - playerSpawnForTorch.z);
+                    const distB = Math.abs(b.x - playerSpawnForTorch.x) + Math.abs(b.z - playerSpawnForTorch.z);
+                    return distA - distB;
+                });
+                // Pick a spot not too close, not too far
+                const torchIdx = Math.min(Math.floor(torchSpaces.length * 0.2), torchSpaces.length - 1);
+                const torchPos = torchSpaces[torchIdx];
+                spawnItem(torchPos.x * cellSize + cellSize/2, torchPos.z * cellSize + cellSize/2, 'torch');
+                const torchListIdx = openSpaces.findIndex(s => s.x === torchPos.x && s.z === torchPos.z);
+                if (torchListIdx !== -1) openSpaces.splice(torchListIdx, 1);
+            }
+
             // Spawn potions and items
             const itemCount = Math.min(3 + Math.floor(game.floor / 2), openSpaces.length - 5);
             for (let i = 0; i < itemCount && openSpaces.length > 0; i++) {
                 const pos = openSpaces.shift();
                 const r = Math.random();
                 let itemType;
-                if (r < 0.4) itemType = 'potion';
-                else if (r < 0.6) itemType = 'mpPotion';
-                else if (r < 0.8) itemType = 'shield';
-                else itemType = 'charm';
+                if (r < 0.35) itemType = 'potion';
+                else if (r < 0.55) itemType = 'mpPotion';
+                else if (r < 0.70) itemType = 'shield';
+                else if (r < 0.85) itemType = 'charm';
+                else itemType = 'torch';  // Extra torches possible
                 spawnItem(pos.x * cellSize + cellSize/2, pos.z * cellSize + cellSize/2, itemType);
-            }
-
-            // Add torches for lighting
-            const torchCount = Math.min(10, openSpaces.length);
-            for (let i = 0; i < torchCount; i++) {
-                const pos = openSpaces[i];
-                if (pos) {
-                    const torch = new THREE.PointLight(0xff6600, 0.5, 10);
-                    torch.position.set(pos.x * cellSize + cellSize/2, 2.5, pos.z * cellSize + cellSize/2);
-                    scene.add(torch);
-                    dungeon.walls.push(torch);
-                }
             }
 
             updateUI();
@@ -1040,6 +1053,10 @@
                 case 'charm':
                     geometry = new THREE.OctahedronGeometry(0.25);
                     color = 0x44ff44;
+                    break;
+                case 'torch':
+                    geometry = new THREE.CylinderGeometry(0.08, 0.12, 0.5, 6);
+                    color = 0xff6600;
                     break;
             }
 
@@ -1365,6 +1382,8 @@
                 if (dist < 2) {
                     game.floor++;
                     game.hasBossKey = false;
+                    torchActive = false;  // Torch burns out between floors
+                    torchEndTime = 0;
                     showMessage(`Ascending to Floor ${game.floor}...`);
                     setTimeout(() => generateDungeon(), 1000);
                 }
@@ -1399,7 +1418,8 @@
                 potion:   { icon: '🧪', name: 'Potion',    desc: 'Restores 50 HP' },
                 mpPotion: { icon: '💧', name: 'MP Potion', desc: 'Restores 30 MP' },
                 shield:   { icon: '🛡️', name: 'Shield',    desc: 'Permanently increases ATK +3' },
-                charm:    { icon: '✨', name: 'Charm',     desc: 'Reduces damage by 50% for 15s' }
+                charm:    { icon: '✨', name: 'Charm',     desc: 'Reduces damage by 50% for 15s' },
+                torch:    { icon: '🔥', name: 'Torch',     desc: 'Light the way for 60s' }
             };
 
             game.items.forEach((item, i) => {
@@ -1452,6 +1472,11 @@
                     game.shieldBuffTime = Date.now() + 15000;
                     showMessage("Defense up for 15 seconds!");
                     break;
+                case 'torch':
+                    torchActive = true;
+                    torchEndTime = Date.now() + TORCH_DURATION;
+                    showMessage("Torch lit! (60s)");
+                    break;
             }
             game.items.splice(index, 1);
             updateUI();
@@ -1465,10 +1490,35 @@
             playerPitch = Math.max(-Math.PI/3, Math.min(Math.PI/3, playerPitch));
         }
 
+        function updateTorch() {
+            // Check if torch expired
+            if (torchActive && Date.now() > torchEndTime) {
+                torchActive = false;
+            }
+
+            // Update lighting based on torch state
+            if (torchActive) {
+                playerLight.intensity = 1.2;
+                playerLight.distance = 18;
+                scene.fog.near = 3;
+                scene.fog.far = 25;
+            } else {
+                playerLight.intensity = 0.3;
+                playerLight.distance = 4;
+                scene.fog.near = 1;
+                scene.fog.far = 6;
+            }
+        }
+
+        function getViewRadius() {
+            return torchActive ? MEMORY_VIEW_RADIUS_LIT : MEMORY_VIEW_RADIUS_DARK;
+        }
+
         function updateMapMemory() {
             if (!mapMemory || mapMemory.length === 0) return;
             const pgx = Math.floor(playerPos.x / cellSize);
             const pgz = Math.floor(playerPos.z / cellSize);
+            const viewRadius = getViewRadius();
 
             for (let z = 0; z < mapSize; z++) {
                 for (let x = 0; x < mapSize; x++) {
@@ -1476,9 +1526,9 @@
                     const dz = z - pgz;
                     const dist = Math.sqrt(dx * dx + dz * dz);
 
-                    if (dist <= MEMORY_VIEW_RADIUS) {
-                        // Within view: boost memory (closer = stronger, with line-of-sight)
-                        const strength = 1.0 - (dist / (MEMORY_VIEW_RADIUS + 1)) * 0.3;
+                    if (dist <= viewRadius) {
+                        // Within view: boost memory (closer = stronger)
+                        const strength = 1.0 - (dist / (viewRadius + 1)) * 0.3;
                         mapMemory[z][x] = Math.min(1.0, Math.max(mapMemory[z][x], strength));
                     } else {
                         // Outside view: decay
@@ -1955,6 +2005,10 @@
                 const remaining = Math.ceil((game.shieldBuffTime - Date.now()) / 1000);
                 buffs.push(`<span style="color:#44ff44">DEF+50% (${remaining}s)</span>`);
             }
+            if (torchActive && Date.now() < torchEndTime) {
+                const remaining = Math.ceil((torchEndTime - Date.now()) / 1000);
+                buffs.push(`<span style="color:#ff6600">🔥 Torch (${remaining}s)</span>`);
+            }
             buffEl.innerHTML = buffs.join(' ');
             document.getElementById('hp-fill').style.width = Math.max(0, (game.hp / game.maxHp * 100)) + '%';
             document.getElementById('mp-fill').style.width = (game.mp / game.maxMp * 100) + '%';
@@ -1974,7 +2028,7 @@
             game.items.forEach((item, i) => {
                 const el = document.createElement('div');
                 el.className = 'item ' + item;
-                const icons = { potion: '🧪', mpPotion: '💧', shield: '🛡️', charm: '✨' };
+                const icons = { potion: '🧪', mpPotion: '💧', shield: '🛡️', charm: '✨', torch: '🔥' };
                 el.textContent = icons[item] || '?';
                 el.title = `${item} (TAB to use)`;
                 itemList.appendChild(el);
@@ -2025,7 +2079,7 @@
                 const gx = Math.floor(wx / cellSize);
                 const gz = Math.floor(wz / cellSize);
                 const ddx = gx - pgx, ddz = gz - pgz;
-                return Math.sqrt(ddx * ddx + ddz * ddz) <= MEMORY_VIEW_RADIUS;
+                return Math.sqrt(ddx * ddx + ddz * ddz) <= getViewRadius();
             }
             function memAlpha(wx, wz) {
                 const gx = Math.floor(wx / cellSize);
@@ -2109,6 +2163,7 @@
             requestAnimationFrame(animate);
 
             if (game.isPlaying) {
+                updateTorch();
                 updatePlayer();
                 updateEnemies();
                 updateMinimap();
@@ -2148,7 +2203,8 @@
                     comboCount: game.comboCount,
                     shrineUsed: game.shrineUsed,
                     shrineBuff: game.shrineBuff,
-                    shieldBuff: game.shieldBuff
+                    shieldBuff: game.shieldBuff,
+                    torchActive: torchActive
                 },
                 playerPos: { x: playerPos.x, z: playerPos.z },
                 playerAngle: playerAngle,

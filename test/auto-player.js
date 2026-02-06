@@ -248,7 +248,8 @@ async function runTest(options) {
                     comboCount: game.comboCount,
                     shrineUsed: game.shrineUsed,
                     shrineBuff: game.shrineBuff,
-                    shieldBuff: game.shieldBuff
+                    shieldBuff: game.shieldBuff,
+                    torchActive
                 },
                 playerPos: { x: playerPos.x, z: playerPos.z },
                 playerAngle,

@@ -103,6 +103,13 @@ class BotAI {
         // --- nearby enemies: always fight if close (collision blocks movement) ---
         const nearbyEnemy = enemies.find(e => this.distanceTo(e.x, e.z) < 3);
 
+        // Use torch if not lit and have one
+        if (!game.torchActive && game.items.includes('torch')) {
+            const ti = game.items.indexOf('torch');
+            this.debugInfo.reason = 'light torch';
+            return { action: 'use_item', itemIndex: ti + 1 };
+        }
+
         // Emergency heal
         if (game.hp < game.maxHp * 0.3) {
             const pi = game.items.indexOf('potion');

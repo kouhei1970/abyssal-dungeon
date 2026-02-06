@@ -40,6 +40,16 @@ TABキーでインベントリを開き、クリックで使用します。
 | 💧 | MP Potion | MP30回復 |
 | 🛡️ | Shield | ATK永続+3 |
 | ✨ | Charm | 15秒間被ダメージ50%減 |
+| 🔥 | Torch | 60秒間視界を広げる |
+
+### 松明システム
+
+ダンジョンは非常に暗く、松明なしでは**1マス先**しか見えません。
+
+- 各フロアに必ず1つ松明が配置されている
+- TABでインベントリを開いて使用
+- 60秒間有効、フロア移動で消える
+- 松明を見つけて使うまでは慎重に探索しよう！
 
 ---
 
@@ -186,6 +196,16 @@ Press TAB to open inventory, click to use.
 | 💧 | MP Potion | Restore 30 MP |
 | 🛡️ | Shield | Permanently +3 ATK |
 | ✨ | Charm | 50% damage reduction for 15s |
+| 🔥 | Torch | Expands vision for 60s |
+
+### Torch System
+
+The dungeon is very dark — without a torch, you can only see **1 tile ahead**.
+
+- Each floor has at least one torch
+- Open inventory with TAB to use
+- Lasts 60 seconds, extinguishes on floor change
+- Find and light a torch before exploring!
 
 ---
 
