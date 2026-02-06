@@ -19,7 +19,7 @@
 | **WASD** | 移動 |
 | **マウス** | 視点操作 |
 | **クリック** | 攻撃（MP5消費） |
-| **E** | インタラクト（ボス起動、祠使用、階段昇降、ドアを開ける） |
+| **E** | インタラクト（ボス起動、祠使用、階段昇降） |
 | **TAB** | インベントリを開く |
 | **ESC** | マウスフォーカス解除 / インベントリを閉じる |
 
@@ -29,6 +29,8 @@
 2. ボス部屋に行き、**E**キーでボスを起動
 3. ボスを倒すと**階段**が出現
 4. 階段を使って次のフロアへ
+
+※ ドアは近づくと自動で開きます
 
 ### アイテム
 
@@ -175,7 +177,7 @@ Simply open `index.html` in your browser.
 | **WASD** | Move |
 | **Mouse** | Look around |
 | **Click** | Attack (costs 5 MP) |
-| **E** | Interact (activate boss, use shrine, climb stairs, open doors) |
+| **E** | Interact (activate boss, use shrine, climb stairs) |
 | **TAB** | Open inventory |
 | **ESC** | Release mouse focus / Close inventory |
 
@@ -185,6 +187,8 @@ Simply open `index.html` in your browser.
 2. Go to the boss room and press **E** to activate the boss
 3. Defeat the boss to reveal the **stairs**
 4. Use the stairs to ascend to the next floor
+
+*Doors open automatically when you approach them.*
 
 ### Items
 
