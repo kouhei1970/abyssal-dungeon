@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Infinite Dungeon Tower</title>
+    <title>Abyssal Dungeon</title>
     <style>
         * {
             margin: 0;
@@ -357,7 +357,7 @@
     <div id="game-container">
         <div id="ui">
             <div id="stats">
-                <h3>Floor <span id="floor-num">1</span></h3>
+                <h3>Depth <span id="floor-num">1</span></h3>
                 <p>HP: <span id="hp-val">100</span>/<span id="hp-max">100</span></p>
                 <div class="stat-bar"><div class="stat-fill" id="hp-fill" style="width:100%"></div></div>
                 <p>MP: <span id="mp-val">50</span>/<span id="mp-max">50</span></p>
@@ -390,14 +390,14 @@
             <div id="attack-effect"></div>
             <div id="message"></div>
             <div id="boss-hp">
-                <h2 id="boss-name">FLOOR GUARDIAN</h2>
+                <h2 id="boss-name">DEPTH GUARDIAN</h2>
                 <div id="boss-hp-bar">
                     <div id="boss-hp-fill" style="width:100%"></div>
                 </div>
             </div>
             <div id="title-screen">
-                <h1>INFINITE DUNGEON TOWER</h1>
-                <p id="version-info">Version 1.0.0 | Updated: 2026-02-06</p>
+                <h1>ABYSSAL DUNGEON</h1>
+                <p id="version-info">Version 2.0.0 | Updated: 2026-02-06</p>
                 <div id="title-rules">
                     <div class="rules-columns">
                         <div class="rules-col">
@@ -411,7 +411,7 @@
                         </div>
                         <div class="rules-col">
                             <h4>OBJECTIVE</h4>
-                            <p>Find the Boss Key, then defeat the Floor Boss to ascend.</p>
+                            <p>Find the Boss Key, then defeat the Depth Boss to descend.</p>
                             <h4>COMBAT TIPS</h4>
                             <p>Backstab: Attack boss from behind for 2x damage</p>
                             <p>Combo: Hit within 2s for up to +75% bonus</p>
@@ -1165,7 +1165,7 @@
                 stunEnd: 0
             };
 
-            document.getElementById('boss-name').textContent = `FLOOR ${game.floor} ${def.name}`;
+            document.getElementById('boss-name').textContent = `DEPTH ${game.floor} ${def.name}`;
         }
 
         function spawnItem(x, z, type) {
@@ -1435,7 +1435,7 @@
             game.bossActive = false;
             document.getElementById('boss-hp').style.display = 'none';
 
-            showMessage(`Floor ${game.floor} cleared! Find the stairs!`);
+            showMessage(`Depth ${game.floor} cleared! Find the stairs down!`);
             game.totalKills++;
 
             // Spawn stairs at saved position
@@ -1520,7 +1520,7 @@
                 if (dist < 2) {
                     game.floor++;
                     game.hasBossKey = false;
-                    showMessage(`Ascending to Floor ${game.floor}...`);
+                    showMessage(`Descending to Depth ${game.floor}...`);
                     setTimeout(() => generateDungeon(), 1000);
                 }
             }
@@ -2121,7 +2121,7 @@
                 resultEl.style.cssText = 'color:#ff6666;font-size:18px;margin-bottom:20px;text-align:center;';
                 titleScreen.querySelector('#start-btn').before(resultEl);
             }
-            resultEl.innerHTML = `GAME OVER<br>Floor ${game.floor} | ${game.totalKills} kills`;
+            resultEl.innerHTML = `GAME OVER<br>Depth ${game.floor} | ${game.totalKills} kills`;
             titleScreen.style.display = 'flex';
         }
 

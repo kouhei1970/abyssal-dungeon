@@ -1,6 +1,6 @@
-# Tower Dungeon
+# Abyssal Dungeon
 
-3D ダンジョンクローラーRPG（Three.js製）+ AI自動テストフレームワーク
+3D 地下ダンジョン探索RPG（Three.js製）+ AI自動テストフレームワーク
 
 [English version below](#english)
 
@@ -27,8 +27,8 @@
 
 1. ダンジョンを探索して**ボスキー(🔑)**を見つける
 2. ボス部屋に行き、**E**キーでボスを起動
-3. ボスを倒すと**階段**が出現
-4. 階段を使って次のフロアへ
+3. ボスを倒すと**下り階段**が出現
+4. 階段を使って次の深度へ降りる
 
 ※ ドアは近づくと自動で開きます
 
@@ -160,9 +160,9 @@ npm run test:quick
 
 <a name="english"></a>
 
-# Tower Dungeon (English)
+# Abyssal Dungeon (English)
 
-3D Dungeon Crawler RPG built with Three.js + AI Auto-Testing Framework
+3D Underground Dungeon Exploration RPG built with Three.js + AI Auto-Testing Framework
 
 ---
 
@@ -177,7 +177,7 @@ Simply open `index.html` in your browser.
 | **WASD** | Move |
 | **Mouse** | Look around |
 | **Click** | Attack (costs 5 MP) |
-| **E** | Interact (activate boss, use shrine, climb stairs) |
+| **E** | Interact (activate boss, use shrine, descend stairs) |
 | **TAB** | Toggle inventory |
 | **ESC** | Release mouse focus / Close inventory |
 
@@ -185,8 +185,8 @@ Simply open `index.html` in your browser.
 
 1. Explore the dungeon and find the **Boss Key (🔑)**
 2. Go to the boss room and press **E** to activate the boss
-3. Defeat the boss to reveal the **stairs**
-4. Use the stairs to ascend to the next floor
+3. Defeat the boss to reveal the **stairs down**
+4. Use the stairs to descend to the next depth
 
 *Doors open automatically when you approach them.*
 
