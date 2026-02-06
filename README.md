@@ -48,7 +48,7 @@ TABキーでインベントリを開き、クリックで使用します。
 
 - 各フロアに必ず1つ松明が配置されている
 - TABでインベントリを開いて使用
-- 60秒間有効、フロア移動で消える
+- 60秒間有効（フロア移動しても継続）
 - 松明を見つけて使うまでは慎重に探索しよう！
 
 ---
@@ -204,7 +204,7 @@ The dungeon is very dark — without a torch, you can only see **1 tile ahead**.
 
 - Each floor has at least one torch
 - Open inventory with TAB to use
-- Lasts 60 seconds, extinguishes on floor change
+- Lasts 60 seconds (persists through floor changes)
 - Find and light a torch before exploring!
 
 ---

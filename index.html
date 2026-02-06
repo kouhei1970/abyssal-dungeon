@@ -1398,8 +1398,6 @@
                 if (dist < 2) {
                     game.floor++;
                     game.hasBossKey = false;
-                    torchActive = false;  // Torch burns out between floors
-                    torchEndTime = 0;
                     showMessage(`Ascending to Floor ${game.floor}...`);
                     setTimeout(() => generateDungeon(), 1000);
                 }
