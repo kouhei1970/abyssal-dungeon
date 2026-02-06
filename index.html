@@ -522,7 +522,7 @@
         let shrineLight = null;
         let bossProjectiles = [];
         let mapMemory = [];      // 2D array: memory strength per cell (0.0 = unknown, 1.0 = fresh)
-        const MEMORY_VIEW_RADIUS_DARK = 1;   // cells visible without torch
+        const MEMORY_VIEW_RADIUS_DARK = 2;   // cells visible without torch
         const MEMORY_VIEW_RADIUS_LIT = 5;    // cells visible with torch
         const MEMORY_DECAY_RATE = 0.0005; // per frame decay (faster)
         const MEMORY_MIN_VISIBLE = 0.05;  // below this, cell is invisible
@@ -740,6 +740,22 @@
             const playerSpawn = openSpaces.shift();
             playerPos.x = playerSpawn.x * cellSize + cellSize/2;
             playerPos.z = playerSpawn.z * cellSize + cellSize/2;
+
+            // Face player toward an open direction (not a wall)
+            const directions = [
+                { angle: 0, dx: 0, dz: 1 },           // +Z
+                { angle: Math.PI, dx: 0, dz: -1 },   // -Z
+                { angle: Math.PI / 2, dx: 1, dz: 0 },  // +X
+                { angle: -Math.PI / 2, dx: -1, dz: 0 } // -X
+            ];
+            for (const dir of directions) {
+                const nx = playerSpawn.x + dir.dx;
+                const nz = playerSpawn.z + dir.dz;
+                if (nx >= 0 && nx < mapSize && nz >= 0 && nz < mapSize && map[nz][nx] === 0) {
+                    playerAngle = dir.angle;
+                    break;
+                }
+            }
 
             // Boss spawn (far from player)
             openSpaces.sort((a, b) => {
@@ -1503,10 +1519,10 @@
                 scene.fog.near = 3;
                 scene.fog.far = 25;
             } else {
-                playerLight.intensity = 0.3;
-                playerLight.distance = 4;
-                scene.fog.near = 1;
-                scene.fog.far = 6;
+                playerLight.intensity = 0.6;
+                playerLight.distance = 8;
+                scene.fog.near = 2;
+                scene.fog.far = 12;
             }
         }
 
