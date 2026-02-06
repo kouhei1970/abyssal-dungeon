@@ -662,16 +662,18 @@
             if (shrineLight) { scene.remove(shrineLight); shrineLight = null; }
             bossProjectiles.forEach(p => scene.remove(p.mesh));
             bossProjectiles = [];
+            doors.forEach(d => scene.remove(d.mesh));
+            doors = [];
             game.shrineUsed = false;
             game.shrineBuff = false;
             hideTelegraphWarning();
 
-            // Adjust dungeon size based on floor (always odd for maze algorithm)
+            // Adjust dungeon size based on floor
             mapSize = 15 + Math.floor(game.floor / 3) * 2;
-            if (mapSize > 31) mapSize = 31;
-            if (mapSize % 2 === 0) mapSize++; // Ensure odd size
+            if (mapSize > 25) mapSize = 25;
+            if (mapSize % 2 === 0) mapSize++;
 
-            // Generate map using maze algorithm (iterative to avoid stack overflow)
+            // Generate maze with rooms
             map = generateMazeIterative(mapSize, mapSize);
 
             // Initialize fog of war memory
@@ -704,6 +706,7 @@
 
             // Walls
             const wallGeom = new THREE.BoxGeometry(cellSize, 3, cellSize);
+
             for (let z = 0; z < mapSize; z++) {
                 for (let x = 0; x < mapSize; x++) {
                     if (map[z][x] === 1) {
@@ -717,7 +720,7 @@
                 }
             }
 
-            // Find spawn positions
+            // Find spawn positions (only floor tiles, not doors)
             const openSpaces = [];
             for (let z = 1; z < mapSize - 1; z++) {
                 for (let x = 1; x < mapSize - 1; x++) {
@@ -757,17 +760,9 @@
                 }
             }
 
-            // Boss spawn (far from player)
-            openSpaces.sort((a, b) => {
-                const distA = Math.abs(a.x - playerSpawn.x) + Math.abs(a.z - playerSpawn.z);
-                const distB = Math.abs(b.x - playerSpawn.x) + Math.abs(b.z - playerSpawn.z);
-                return distB - distA;
-            });
+            // Boss spawn (random position, already shuffled)
             const bossSpawn = openSpaces.shift();
             spawnBoss(bossSpawn.x * cellSize + cellSize/2, bossSpawn.z * cellSize + cellSize/2);
-
-            // Re-shuffle remaining spaces
-            shuffleArray(openSpaces);
 
             // Spawn enemies
             const enemyCount = Math.min(5 + game.floor * 2, openSpaces.length - 10);
@@ -776,23 +771,16 @@
                 spawnEnemy(pos.x * cellSize + cellSize/2, pos.z * cellSize + cellSize/2);
             }
 
-            // Spawn boss key
+            // Spawn boss key (random)
             if (openSpaces.length > 0) {
                 const keyPos = openSpaces.shift();
                 spawnItem(keyPos.x * cellSize + cellSize/2, keyPos.z * cellSize + cellSize/2, 'key');
             }
             game.hasBossKey = false;
 
-            // Spawn shrine (far from player)
+            // Spawn shrine (random position)
             if (openSpaces.length > 5) {
-                // Sort by distance to player (descending) and pick a far spot
-                const playerSpawnForShrine = { x: Math.floor(playerPos.x / cellSize), z: Math.floor(playerPos.z / cellSize) };
-                const farSpaces = [...openSpaces].sort((a, b) => {
-                    const distA = Math.abs(a.x - playerSpawnForShrine.x) + Math.abs(a.z - playerSpawnForShrine.z);
-                    const distB = Math.abs(b.x - playerSpawnForShrine.x) + Math.abs(b.z - playerSpawnForShrine.z);
-                    return distB - distA;
-                });
-                const shrinePos = farSpaces[0];
+                const shrinePos = openSpaces.shift();
                 const sx = shrinePos.x * cellSize + cellSize / 2;
                 const sz = shrinePos.z * cellSize + cellSize / 2;
 
@@ -856,7 +844,10 @@
             }
         }
 
-        // Iterative maze generation to avoid stack overflow
+        // Dungeon generation with rooms and corridors
+        let doors = [];  // Track door objects (currently unused)
+
+        // Simple iterative maze generation (working version)
         function generateMazeIterative(width, height) {
             const maze = Array(height).fill().map(() => Array(width).fill(1));
             const stack = [];
@@ -872,7 +863,6 @@
                 const current = stack[stack.length - 1];
                 const { x, y } = current;
 
-                // Find unvisited neighbors
                 const neighbors = [];
                 for (const [dx, dy] of directions) {
                     const nx = x + dx;
@@ -883,21 +873,32 @@
                 }
 
                 if (neighbors.length > 0) {
-                    // Choose random neighbor
                     const { nx, ny, dx, dy } = neighbors[Math.floor(Math.random() * neighbors.length)];
-
-                    // Remove wall between current and neighbor
                     maze[y + dy / 2][x + dx / 2] = 0;
                     maze[ny][nx] = 0;
-
                     stack.push({ x: nx, y: ny });
                 } else {
                     stack.pop();
                 }
             }
 
-            // Add some extra passages for more open layout
-            const extraPassages = Math.floor((width * height) / 10);
+            // Add rooms (clear out rectangular areas)
+            const numRooms = 3 + Math.floor(game.floor / 2);
+            for (let i = 0; i < numRooms; i++) {
+                const roomW = 3 + Math.floor(Math.random() * 2);
+                const roomH = 3 + Math.floor(Math.random() * 2);
+                const roomX = 1 + Math.floor(Math.random() * (width - roomW - 2));
+                const roomY = 1 + Math.floor(Math.random() * (height - roomH - 2));
+
+                for (let ry = roomY; ry < roomY + roomH && ry < height - 1; ry++) {
+                    for (let rx = roomX; rx < roomX + roomW && rx < width - 1; rx++) {
+                        maze[ry][rx] = 0;
+                    }
+                }
+            }
+
+            // Add extra passages for more open layout
+            const extraPassages = Math.floor((width * height) / 15);
             for (let i = 0; i < extraPassages; i++) {
                 const x = Math.floor(Math.random() * (width - 2)) + 1;
                 const y = Math.floor(Math.random() * (height - 2)) + 1;
@@ -1636,7 +1637,7 @@
                 const itemDz = item.z - playerPos.z;
                 const dist = Math.sqrt(itemDx * itemDx + itemDz * itemDz);
 
-                if (dist < 1) {
+                if (dist < 1.8) {
                     scene.remove(item.mesh);
                     scene.remove(item.light);
 
@@ -2245,6 +2246,7 @@
                     rotationY: boss.mesh.rotation.y
                 } : null,
                 items: items.map(i => ({ x: i.x, z: i.z, type: i.type })),
+                doors: doors.map(d => ({ x: d.x, z: d.z, isOpen: d.isOpen })),
                 stairs: stairs ? { x: stairs.position.x, z: stairs.position.z } : null,
                 shrine: shrine && !game.shrineUsed
                     ? { x: shrine.position.x, z: shrine.position.z }

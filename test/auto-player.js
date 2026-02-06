@@ -271,6 +271,7 @@ async function runTest(options) {
                     rotationY: boss.mesh.rotation.y
                 } : null,
                 items: items.map(i => ({ x: i.x, z: i.z, type: i.type })),
+                doors: doors.map(d => ({ x: d.x, z: d.z, isOpen: d.isOpen })),
                 stairs: stairs ? { x: stairs.position.x, z: stairs.position.z } : null,
                 shrine: shrine && !game.shrineUsed
                     ? { x: shrine.position.x, z: shrine.position.z }
