@@ -25,15 +25,19 @@ function parseArgs() {
         maxTime: 5 * 60 * 1000,
         headless: true,
         screenshotInterval: 5000,
-        verbose: false
+        verbose: false,
+        record: false,
+        recordPath: null
     };
     args.forEach(arg => {
         if (arg === '--gui')                options.headless = false;
         else if (arg === '--headless')      options.headless = true;
         else if (arg === '--verbose' || arg === '-v') options.verbose = true;
+        else if (arg === '--record')        options.record = true;
         else if (arg.startsWith('--floors='))  options.maxFloors = parseInt(arg.split('=')[1]) || 3;
         else if (arg.startsWith('--time='))    options.maxTime = (parseInt(arg.split('=')[1]) || 300) * 1000;
         else if (arg.startsWith('--screenshot=')) options.screenshotInterval = parseInt(arg.split('=')[1]) * 1000 || 5000;
+        else if (arg.startsWith('--record='))  { options.record = true; options.recordPath = arg.split('=')[1]; }
     });
     return options;
 }
@@ -204,7 +208,7 @@ const DEBUG_HUD_INJECT = `
 /* ================================================================== */
 
 async function runTest(options) {
-    const { maxFloors, maxTime, headless, screenshotInterval, verbose } = options;
+    const { maxFloors, maxTime, headless, screenshotInterval, verbose, record, recordPath } = options;
 
     const sep = '='.repeat(60);
     console.log(sep);
@@ -288,6 +292,15 @@ async function runTest(options) {
     });
 
     console.log('[init] Game loaded.  Input blocked.  Starting game...');
+
+    /* ---- start page recording if requested ---- */
+    let screencastRecorder = null;
+    if (record) {
+        const videoFile = recordPath ||
+            path.resolve(__dirname, '..', `gameplay_${new Date().toISOString().replace(/[:.]/g, '').slice(0, 15)}.webm`);
+        screencastRecorder = await page.screencast({ path: videoFile });
+        console.log(`[rec] Recording to: ${videoFile}`);
+    }
 
     // Start
     await page.evaluate(() => window.gameAPI.start());
@@ -454,6 +467,12 @@ async function runTest(options) {
             ? Math.max(0, 100 - results.floors.reduce((s, f) => s + f.clearTime, 0) / results.floors.length / 600)
             : 50
     };
+
+    /* ---- stop recording ---- */
+    if (screencastRecorder) {
+        await screencastRecorder.stop();
+        console.log('[rec] Recording saved.');
+    }
 
     const reportPath = reporter.generateReport(results);
 

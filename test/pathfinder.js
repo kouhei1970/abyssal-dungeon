@@ -102,8 +102,11 @@ class Pathfinder {
         for (const [dx, dz] of dirs) {
             const nx = gx + dx;
             const nz = gz + dz;
-            if (nx < 0 || nx >= this.mapSize || nz < 0 || nz >= this.mapSize || this.map[nz][nx] === 1) {
+            if (nx < 0 || nx >= this.mapSize || nz < 0 || nz >= this.mapSize) {
                 count++;
+            } else {
+                const cell = this.map[nz][nx];
+                if (cell === 1 || cell === -1) count++; // wall or void
             }
         }
         return count;

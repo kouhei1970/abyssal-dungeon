@@ -397,7 +397,7 @@
             </div>
             <div id="title-screen">
                 <h1>ABYSSAL DUNGEON</h1>
-                <p id="version-info">Version 2.0.0 | Updated: 2026-02-06</p>
+                <p id="version-info">Version 2.1.0 | Updated: 2026-02-06</p>
                 <div id="title-rules">
                     <div class="rules-columns">
                         <div class="rules-col">
@@ -434,6 +434,277 @@
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script>
+        // Irregular Map Generator
+        class IrregularMapGenerator {
+            constructor(maxSize = 36) {
+                this.maxSize = maxSize;
+            }
+
+            generate(depth = 1, forceShape = null) {
+                const maxAttempts = 20;
+                for (let attempt = 0; attempt < maxAttempts; attempt++) {
+                    const result = this.tryGenerate(depth, forceShape);
+                    if (result) return result;
+                }
+                return this.tryGenerate(depth, forceShape, true);
+            }
+
+            tryGenerate(depth, forceShape, force = false) {
+                const baseSize = Math.min(22 + depth * 2, this.maxSize);
+                const shapes = ['blob', 'L', 'cross', 'donut', 'caves'];
+                const shapeType = forceShape || shapes[Math.floor(Math.random() * shapes.length)];
+
+                const map = Array.from({ length: this.maxSize }, () => Array(this.maxSize).fill(-1));
+                const mask = this.generateShape(shapeType, baseSize);
+                const offset = Math.floor((this.maxSize - baseSize) / 2);
+
+                for (let z = 0; z < baseSize; z++)
+                    for (let x = 0; x < baseSize; x++)
+                        if (mask[z][x]) map[z + offset][x + offset] = 0;
+
+                this.addBoundaryWalls(map);
+                const rooms = this.generateRooms(map, offset, baseSize, depth);
+                this.addObstacles(map, rooms);
+                this.ensureEnclosure(map);
+                this.validateDoors(map);
+
+                if (!force && !this.isFullyConnected(map)) return null;
+
+                return { map, rooms, shape: shapeType, size: baseSize };
+            }
+
+            generateShape(type, size) {
+                const mask = Array.from({ length: size }, () => Array(size).fill(false));
+                const cx = size / 2, cz = size / 2, r = size / 2 - 2;
+
+                switch (type) {
+                    case 'blob': {
+                        const seed = Math.random() * 100;
+                        for (let z = 0; z < size; z++)
+                            for (let x = 0; x < size; x++) {
+                                const dx = x - cx, dz = z - cz;
+                                const dist = Math.sqrt(dx*dx + dz*dz);
+                                const angle = Math.atan2(dz, dx);
+                                if (dist < r * (0.7 + 0.3 * Math.sin(angle*3 + seed) * Math.cos(angle*2 + seed*0.7)))
+                                    mask[z][x] = true;
+                            }
+                        break;
+                    }
+                    case 'L': {
+                        const arm = Math.floor(size * 0.5);
+                        const rot = Math.floor(Math.random() * 4);
+                        for (let z = 0; z < size; z++)
+                            for (let x = 0; x < size; x++) {
+                                let inShape = rot === 0 ? (x < arm || z >= size - arm) :
+                                              rot === 1 ? (x >= size - arm || z >= size - arm) :
+                                              rot === 2 ? (x >= size - arm || z < arm) : (x < arm || z < arm);
+                                if (inShape) mask[z][x] = true;
+                            }
+                        break;
+                    }
+                    case 'cross': {
+                        const arm = Math.floor(size * 0.35);
+                        for (let z = 0; z < size; z++)
+                            for (let x = 0; x < size; x++)
+                                if ((x >= cx - arm/2 && x < cx + arm/2) || (z >= cz - arm/2 && z < cz + arm/2))
+                                    mask[z][x] = true;
+                        break;
+                    }
+                    case 'donut': {
+                        const outer = r + 2, inner = r * 0.3;
+                        for (let z = 0; z < size; z++)
+                            for (let x = 0; x < size; x++) {
+                                const d = Math.sqrt((x-cx)**2 + (z-cz)**2);
+                                if (d < outer && d > inner) mask[z][x] = true;
+                            }
+                        break;
+                    }
+                    case 'caves': {
+                        for (let z = 1; z < size-1; z++)
+                            for (let x = 1; x < size-1; x++)
+                                if (Math.sqrt((x-cx)**2 + (z-cz)**2) < r + 2)
+                                    mask[z][x] = Math.random() < 0.55;
+                        for (let i = 0; i < 5; i++) {
+                            const next = mask.map(row => [...row]);
+                            for (let z = 1; z < size-1; z++)
+                                for (let x = 1; x < size-1; x++) {
+                                    let n = 0;
+                                    for (let dz = -1; dz <= 1; dz++)
+                                        for (let dx = -1; dx <= 1; dx++)
+                                            if (mask[z+dz]?.[x+dx]) n++;
+                                    next[z][x] = n >= 5;
+                                }
+                            for (let z = 0; z < size; z++)
+                                for (let x = 0; x < size; x++)
+                                    mask[z][x] = next[z][x];
+                        }
+                        break;
+                    }
+                }
+                return mask;
+            }
+
+            addBoundaryWalls(map) {
+                const changes = [];
+                for (let z = 0; z < this.maxSize; z++)
+                    for (let x = 0; x < this.maxSize; x++)
+                        if (map[z][x] === 0) {
+                            for (const [dz, dx] of [[0,-1], [0,1], [-1,0], [1,0]])
+                                if (map[z + dz]?.[x + dx] === -1) { changes.push({ z, x }); break; }
+                        }
+                for (const c of changes) map[c.z][c.x] = 1;
+            }
+
+            generateRooms(map, offset, baseSize, depth) {
+                const rooms = [];
+                const roomCount = 3 + Math.floor(depth / 2);
+                for (let attempt = 0; attempt < roomCount * 50 && rooms.length < roomCount; attempt++) {
+                    const room = this.tryPlaceRoom(map, offset, baseSize, rooms);
+                    if (room) rooms.push(room);
+                }
+                return rooms;
+            }
+
+            tryPlaceRoom(map, offset, baseSize, existingRooms) {
+                const outerW = 5 + Math.floor(Math.random() * 4);
+                const outerH = 5 + Math.floor(Math.random() * 4);
+                const rx = offset + 1 + Math.floor(Math.random() * (baseSize - outerW - 2));
+                const rz = offset + 1 + Math.floor(Math.random() * (baseSize - outerH - 2));
+
+                for (let z = rz; z < rz + outerH; z++)
+                    for (let x = rx; x < rx + outerW; x++)
+                        if (map[z]?.[x] !== 0) return null;
+
+                for (const room of existingRooms) {
+                    const r1 = { x: rx + 1, z: rz + 1, w: outerW - 2, h: outerH - 2 };
+                    const r2 = room.interior;
+                    if (r1.x < r2.x + r2.w + 2 && r1.x + r1.w + 2 > r2.x &&
+                        r1.z < r2.z + r2.h + 2 && r1.z + r1.h + 2 > r2.z) return null;
+                }
+
+                const room = {
+                    outer: { x: rx, z: rz, w: outerW, h: outerH },
+                    interior: { x: rx + 1, z: rz + 1, w: outerW - 2, h: outerH - 2 },
+                    doors: []
+                };
+
+                for (let x = rx; x < rx + outerW; x++) { map[rz][x] = 1; map[rz + outerH - 1][x] = 1; }
+                for (let z = rz; z < rz + outerH; z++) { map[z][rx] = 1; map[z][rx + outerW - 1] = 1; }
+
+                const doorCount = 1 + Math.floor(Math.random() * 2);
+                const edges = ['top', 'bottom', 'left', 'right'].sort(() => Math.random() - 0.5);
+                for (let i = 0; i < doorCount && i < edges.length; i++) {
+                    const door = this.placeDoor(map, room, edges[i]);
+                    if (door) room.doors.push(door);
+                }
+                return room;
+            }
+
+            placeDoor(map, room, edge) {
+                const { outer } = room;
+                let x, z, wallCheck1, wallCheck2;
+                switch (edge) {
+                    case 'top':
+                        x = outer.x + 2 + Math.floor(Math.random() * Math.max(1, outer.w - 4));
+                        z = outer.z; wallCheck1 = { x: x-1, z }; wallCheck2 = { x: x+1, z }; break;
+                    case 'bottom':
+                        x = outer.x + 2 + Math.floor(Math.random() * Math.max(1, outer.w - 4));
+                        z = outer.z + outer.h - 1; wallCheck1 = { x: x-1, z }; wallCheck2 = { x: x+1, z }; break;
+                    case 'left':
+                        x = outer.x; z = outer.z + 2 + Math.floor(Math.random() * Math.max(1, outer.h - 4));
+                        wallCheck1 = { x, z: z-1 }; wallCheck2 = { x, z: z+1 }; break;
+                    case 'right':
+                        x = outer.x + outer.w - 1; z = outer.z + 2 + Math.floor(Math.random() * Math.max(1, outer.h - 4));
+                        wallCheck1 = { x, z: z-1 }; wallCheck2 = { x, z: z+1 }; break;
+                }
+                if (map[wallCheck1.z]?.[wallCheck1.x] !== 1 || map[wallCheck2.z]?.[wallCheck2.x] !== 1) return null;
+                const outside = edge === 'top' ? { x, z: z-1 } : edge === 'bottom' ? { x, z: z+1 } :
+                                edge === 'left' ? { x: x-1, z } : { x: x+1, z };
+                if (map[outside.z]?.[outside.x] !== 0) return null;
+                map[z][x] = 2;
+                return { x, z, edge };
+            }
+
+            addObstacles(map, rooms) {
+                for (let attempt = 0; attempt < Math.floor(Math.random() * 3) * 20; attempt++) {
+                    const x = 2 + Math.floor(Math.random() * (this.maxSize - 4));
+                    const z = 2 + Math.floor(Math.random() * (this.maxSize - 4));
+                    if (map[z][x] !== 0) continue;
+                    let inRoom = false, nearDoor = false;
+                    for (const room of rooms) {
+                        const { interior } = room;
+                        if (x >= interior.x && x < interior.x + interior.w &&
+                            z >= interior.z && z < interior.z + interior.h) { inRoom = true; break; }
+                    }
+                    if (inRoom) continue;
+                    for (let dz = -1; dz <= 1 && !nearDoor; dz++)
+                        for (let dx = -1; dx <= 1 && !nearDoor; dx++)
+                            if (map[z + dz]?.[x + dx] === 2) nearDoor = true;
+                    if (!nearDoor) map[z][x] = 1;
+                }
+            }
+
+            ensureEnclosure(map) {
+                let changed = true;
+                while (changed) {
+                    changed = false;
+                    for (let z = 0; z < this.maxSize; z++)
+                        for (let x = 0; x < this.maxSize; x++)
+                            if (map[z][x] === 0 || map[z][x] === 2) {
+                                if (z === 0 || z === this.maxSize - 1 || x === 0 || x === this.maxSize - 1) {
+                                    map[z][x] = 1; changed = true; continue;
+                                }
+                                for (let dz = -1; dz <= 1; dz++)
+                                    for (let dx = -1; dx <= 1; dx++) {
+                                        if (dz === 0 && dx === 0) continue;
+                                        const nz = z + dz, nx = x + dx;
+                                        if (nz < 0 || nz >= this.maxSize || nx < 0 || nx >= this.maxSize) {
+                                            map[z][x] = 1; changed = true;
+                                        } else if (map[nz][nx] === -1) {
+                                            map[nz][nx] = 1; changed = true;
+                                        }
+                                    }
+                            }
+                }
+            }
+
+            validateDoors(map) {
+                for (let z = 1; z < this.maxSize - 1; z++)
+                    for (let x = 1; x < this.maxSize - 1; x++)
+                        if (map[z][x] === 2) {
+                            const up = map[z-1]?.[x], down = map[z+1]?.[x];
+                            const left = map[z]?.[x-1], right = map[z]?.[x+1];
+                            if (!((left === 1 && right === 1) || (up === 1 && down === 1)))
+                                map[z][x] = 1;
+                        }
+            }
+
+            isFullyConnected(map) {
+                const walkable = [];
+                for (let z = 0; z < this.maxSize; z++)
+                    for (let x = 0; x < this.maxSize; x++)
+                        if (map[z][x] === 0 || map[z][x] === 2) walkable.push({ x, z });
+                if (walkable.length === 0) return false;
+
+                const visited = new Set();
+                const queue = [walkable[0]];
+                visited.add(`${walkable[0].x},${walkable[0].z}`);
+
+                while (queue.length > 0) {
+                    const { x, z } = queue.shift();
+                    for (const [dx, dz] of [[0,-1], [0,1], [-1,0], [1,0]]) {
+                        const nx = x + dx, nz = z + dz, key = `${nx},${nz}`;
+                        if (!visited.has(key) && (map[nz]?.[nx] === 0 || map[nz]?.[nx] === 2)) {
+                            visited.add(key); queue.push({ x: nx, z: nz });
+                        }
+                    }
+                }
+                return visited.size === walkable.length;
+            }
+        }
+
+        const mapGenerator = new IrregularMapGenerator(36);
+
         // Game State
         const game = {
             floor: 1,
@@ -530,6 +801,8 @@
         let shrineLight = null;
         let bossProjectiles = [];
         let mapMemory = [];      // 2D array: memory strength per cell (0.0 = unknown, 1.0 = fresh)
+        let mapRevealed = [];    // 2D array: true if cell is revealed (not behind closed door)
+        let dungeonRooms = [];   // Room data from generator
         const MEMORY_VIEW_RADIUS_DARK = 2;   // cells visible without torch
         const MEMORY_VIEW_RADIUS_LIT = 5;    // cells visible with torch
         const MEMORY_DECAY_RATE = 0.0005; // per frame decay (faster)
@@ -676,16 +949,15 @@
             game.shrineBuff = false;
             hideTelegraphWarning();
 
-            // Adjust dungeon size based on floor
-            mapSize = 15 + Math.floor(game.floor / 3) * 2;
-            if (mapSize > 25) mapSize = 25;
-            if (mapSize % 2 === 0) mapSize++;
+            // Generate irregular dungeon
+            mapSize = 36;
+            const dungeonResult = mapGenerator.generate(game.floor);
+            map = dungeonResult.map;
+            dungeonRooms = dungeonResult.rooms;
 
-            // Generate maze with rooms
-            map = generateMazeIterative(mapSize, mapSize);
-
-            // Initialize fog of war memory
+            // Initialize fog of war memory and visibility (behind closed doors)
             mapMemory = Array(mapSize).fill(null).map(() => Array(mapSize).fill(0));
+            mapRevealed = Array(mapSize).fill(null).map(() => Array(mapSize).fill(false));
 
             // Create 3D geometry
             const wallMaterial = new THREE.MeshStandardMaterial({
@@ -795,32 +1067,62 @@
                 }
             }
 
-            // Boss spawn - find position far from player (minimum 10 cells away)
-            const minBossDistance = 10;
+            // Initialize revealed map from player position
+            updateRevealedMap();
+
+            // Boss spawn - must be inside a room, far from player
             let bossSpawn = null;
-            for (let i = 0; i < openSpaces.length; i++) {
-                const pos = openSpaces[i];
+            const minBossDistance = 8;
+
+            // Helper to check if position is inside a room
+            function isInsideRoom(x, z) {
+                for (const room of dungeonRooms) {
+                    const { interior } = room;
+                    if (x >= interior.x && x < interior.x + interior.w &&
+                        z >= interior.z && z < interior.z + interior.h) {
+                        return true;
+                    }
+                }
+                return false;
+            }
+
+            // Find room positions far from player
+            const roomSpaces = openSpaces.filter(pos => isInsideRoom(pos.x, pos.z));
+            for (let i = 0; i < roomSpaces.length; i++) {
+                const pos = roomSpaces[i];
                 const dx = pos.x - playerSpawn.x;
                 const dz = pos.z - playerSpawn.z;
                 const dist = Math.sqrt(dx * dx + dz * dz);
                 if (dist >= minBossDistance) {
-                    bossSpawn = openSpaces.splice(i, 1)[0];
+                    bossSpawn = pos;
+                    const idx = openSpaces.indexOf(pos);
+                    if (idx !== -1) openSpaces.splice(idx, 1);
                     break;
                 }
             }
-            // Fallback: if no position far enough, use farthest available
-            if (!bossSpawn) {
+            // Fallback: use farthest room position
+            if (!bossSpawn && roomSpaces.length > 0) {
                 let maxDist = 0;
-                let maxIdx = 0;
+                let bestPos = null;
+                for (const pos of roomSpaces) {
+                    const dx = pos.x - playerSpawn.x;
+                    const dz = pos.z - playerSpawn.z;
+                    const dist = Math.sqrt(dx * dx + dz * dz);
+                    if (dist > maxDist) { maxDist = dist; bestPos = pos; }
+                }
+                bossSpawn = bestPos;
+                const idx = openSpaces.indexOf(bestPos);
+                if (idx !== -1) openSpaces.splice(idx, 1);
+            }
+            // Last fallback: any open space far from player
+            if (!bossSpawn) {
+                let maxDist = 0, maxIdx = 0;
                 for (let i = 0; i < openSpaces.length; i++) {
                     const pos = openSpaces[i];
                     const dx = pos.x - playerSpawn.x;
                     const dz = pos.z - playerSpawn.z;
                     const dist = Math.sqrt(dx * dx + dz * dz);
-                    if (dist > maxDist) {
-                        maxDist = dist;
-                        maxIdx = i;
-                    }
+                    if (dist > maxDist) { maxDist = dist; maxIdx = i; }
                 }
                 bossSpawn = openSpaces.splice(maxIdx, 1)[0];
             }
@@ -1674,6 +1976,63 @@
             }
         }
 
+        // Update revealed map - flood fill from player, stopping at walls and closed doors
+        function updateRevealedMap() {
+            const pgx = Math.floor(playerPos.x / cellSize);
+            const pgz = Math.floor(playerPos.z / cellSize);
+
+            const visited = new Set();
+            const revealedFloors = []; // Track revealed floor/door cells
+            const queue = [{ x: pgx, z: pgz }];
+            visited.add(`${pgx},${pgz}`);
+
+            // Phase 1: Flood fill through walkable areas only
+            while (queue.length > 0) {
+                const { x, z } = queue.shift();
+                if (x < 0 || x >= mapSize || z < 0 || z >= mapSize) continue;
+
+                const cell = map[z]?.[x];
+                if (cell === -1 || cell === 1) continue; // Skip void/walls
+
+                // Check if this is a closed door - don't pass through
+                if (cell === 2) {
+                    const doorObj = doors.find(d => d.gridX === x && d.gridZ === z);
+                    if (doorObj && !doorObj.isOpen) {
+                        // Reveal the closed door itself but don't expand
+                        mapRevealed[z][x] = true;
+                        continue;
+                    }
+                }
+
+                // Reveal this floor/door cell
+                mapRevealed[z][x] = true;
+                revealedFloors.push({ x, z });
+
+                // Expand to neighbors
+                for (const [dx, dz] of [[0,-1], [0,1], [-1,0], [1,0]]) {
+                    const nx = x + dx, nz = z + dz;
+                    const key = `${nx},${nz}`;
+                    if (!visited.has(key)) {
+                        visited.add(key);
+                        queue.push({ x: nx, z: nz });
+                    }
+                }
+            }
+
+            // Phase 2: Reveal walls adjacent to revealed floor/door cells
+            for (const { x, z } of revealedFloors) {
+                for (const [dx, dz] of [[0,-1], [0,1], [-1,0], [1,0], [-1,-1], [-1,1], [1,-1], [1,1]]) {
+                    const nx = x + dx, nz = z + dz;
+                    if (nx >= 0 && nx < mapSize && nz >= 0 && nz < mapSize) {
+                        const adjCell = map[nz][nx];
+                        if (adjCell === 1) { // Wall
+                            mapRevealed[nz][nx] = true;
+                        }
+                    }
+                }
+            }
+        }
+
         function updatePlayer() {
             if (!game.isPlaying || inventoryOpen) return;
 
@@ -1786,6 +2145,7 @@
                     door.isOpen = true;
                     scene.remove(door.mesh);
                     showMessage("Door opened");
+                    updateRevealedMap(); // Reveal areas behind the opened door
                 }
             }
         }
@@ -1794,7 +2154,8 @@
             const mapX = Math.floor(x / cellSize);
             const mapZ = Math.floor(z / cellSize);
             if (mapX < 0 || mapX >= mapSize || mapZ < 0 || mapZ >= mapSize) return true;
-            return map[mapZ][mapX] === 1;
+            const cell = map[mapZ][mapX];
+            return cell === 1 || cell === -1; // wall or void
         }
 
         function updateEnemies() {
@@ -2202,14 +2563,18 @@
             ctx.fillStyle = '#000';
             ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-            // Draw map (fog of war based on memory)
+            // Draw map (fog of war based on memory, only revealed areas)
             for (let z = 0; z < mapSize; z++) {
                 for (let x = 0; x < mapSize; x++) {
+                    // Skip unrevealed areas (behind closed doors)
+                    if (!mapRevealed[z] || !mapRevealed[z][x]) continue;
+
                     const mem = (mapMemory[z] && mapMemory[z][x]) || 0;
                     if (mem < MEMORY_MIN_VISIBLE) continue; // fully unknown
 
                     const alpha = mem;
                     const cell = map[z] && map[z][x];
+                    if (cell === -1) continue; // skip void
                     if (cell === 1) {
                         ctx.fillStyle = `rgba(68,68,68,${alpha})`; // wall
                     } else if (cell === 2) {
@@ -2220,8 +2585,10 @@
                         } else {
                             ctx.fillStyle = `rgba(34,34,34,${alpha})`; // open door (floor)
                         }
-                    } else {
+                    } else if (cell === 0) {
                         ctx.fillStyle = `rgba(34,34,34,${alpha})`; // floor
+                    } else {
+                        continue;
                     }
                     ctx.fillRect(x * scale, z * scale, scale, scale);
                 }
@@ -2367,35 +2734,64 @@
                 },
                 playerPos: { x: playerPos.x, z: playerPos.z },
                 playerAngle: playerAngle,
-                enemies: enemies.map(e => ({
+                // Helper: check if world position is revealed
+                _isRevealed: (wx, wz) => {
+                    const gx = Math.floor(wx / cellSize);
+                    const gz = Math.floor(wz / cellSize);
+                    return mapRevealed[gz] && mapRevealed[gz][gx];
+                },
+                // Only expose entities in revealed areas (fog of war)
+                enemies: enemies.filter(e => {
+                    const gx = Math.floor(e.mesh.position.x / cellSize);
+                    const gz = Math.floor(e.mesh.position.z / cellSize);
+                    return mapRevealed[gz] && mapRevealed[gz][gx];
+                }).map(e => ({
                     x: e.mesh.position.x,
                     z: e.mesh.position.z,
                     hp: e.hp,
                     maxHp: e.maxHp,
                     type: e.type || 'skeleton'
                 })),
-                boss: boss ? {
-                    x: boss.mesh.position.x,
-                    z: boss.mesh.position.z,
-                    hp: boss.hp,
-                    maxHp: boss.maxHp,
-                    active: boss.active,
-                    type: boss.type || 'guardian',
-                    telegraphing: boss.telegraphing || false,
-                    telegraphProgress: boss.telegraphing
-                        ? Math.min(1, (Date.now() - boss.telegraphStart) / boss.telegraphTime)
-                        : 0,
-                    stunned: boss.stunned || false,
-                    enraged: boss.enraged || false,
-                    rotationY: boss.mesh.rotation.y
-                } : null,
-                items: items.map(i => ({ x: i.x, z: i.z, type: i.type })),
-                doors: doors.map(d => ({ x: d.x, z: d.z, isOpen: d.isOpen })),
-                stairs: stairs ? { x: stairs.position.x, z: stairs.position.z } : null,
-                shrine: shrine && !game.shrineUsed
-                    ? { x: shrine.position.x, z: shrine.position.z }
-                    : null,
+                boss: (boss && (() => {
+                    const gx = Math.floor(boss.mesh.position.x / cellSize);
+                    const gz = Math.floor(boss.mesh.position.z / cellSize);
+                    if (!mapRevealed[gz] || !mapRevealed[gz][gx]) return null;
+                    return {
+                        x: boss.mesh.position.x,
+                        z: boss.mesh.position.z,
+                        hp: boss.hp,
+                        maxHp: boss.maxHp,
+                        active: boss.active,
+                        type: boss.type || 'guardian',
+                        telegraphing: boss.telegraphing || false,
+                        telegraphProgress: boss.telegraphing
+                            ? Math.min(1, (Date.now() - boss.telegraphStart) / boss.telegraphTime)
+                            : 0,
+                        stunned: boss.stunned || false,
+                        enraged: boss.enraged || false,
+                        rotationY: boss.mesh.rotation.y
+                    };
+                })()) || null,
+                items: items.filter(i => {
+                    const gx = Math.floor(i.x / cellSize);
+                    const gz = Math.floor(i.z / cellSize);
+                    return mapRevealed[gz] && mapRevealed[gz][gx];
+                }).map(i => ({ x: i.x, z: i.z, type: i.type })),
+                doors: doors.map(d => ({ x: d.x, z: d.z, gridX: d.gridX, gridZ: d.gridZ, isOpen: d.isOpen })),
+                stairs: stairs && (() => {
+                    const gx = Math.floor(stairs.position.x / cellSize);
+                    const gz = Math.floor(stairs.position.z / cellSize);
+                    if (!mapRevealed[gz] || !mapRevealed[gz][gx]) return null;
+                    return { x: stairs.position.x, z: stairs.position.z };
+                })() || null,
+                shrine: shrine && !game.shrineUsed && (() => {
+                    const gx = Math.floor(shrine.position.x / cellSize);
+                    const gz = Math.floor(shrine.position.z / cellSize);
+                    if (!mapRevealed[gz] || !mapRevealed[gz][gx]) return null;
+                    return { x: shrine.position.x, z: shrine.position.z };
+                })() || null,
                 map: map,
+                mapRevealed: mapRevealed,
                 mapSize: mapSize,
                 cellSize: cellSize
             }),

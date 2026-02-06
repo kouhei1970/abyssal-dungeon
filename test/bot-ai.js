@@ -103,27 +103,52 @@ class BotAI {
         // --- nearby enemies: always fight if close (collision blocks movement) ---
         const nearbyEnemy = enemies.find(e => this.distanceTo(e.x, e.z) < 3);
 
-        // Use torch if not lit and have one
+        // === ITEM USAGE (highest priority) ===
+
+        // Use torch IMMEDIATELY if not lit and have one
         if (!game.torchActive && game.items.includes('torch')) {
             const ti = game.items.indexOf('torch');
-            this.debugInfo.reason = 'light torch';
+            this.debugInfo.reason = 'USE TORCH NOW';
             return { action: 'use_item', itemIndex: ti + 1 };
         }
 
-        // Emergency heal
+        // Emergency heal (HP < 30%)
         if (game.hp < game.maxHp * 0.3) {
             const pi = game.items.indexOf('potion');
             if (pi !== -1) {
-                this.debugInfo.reason = 'emergency potion';
+                this.debugInfo.reason = 'emergency HP potion';
                 return { action: 'use_item', itemIndex: pi + 1 };
             }
         }
 
-        // Use charm (defense buff) when near enemies
-        if (nearbyEnemy && game.items.includes('charm') && !game.shieldBuff) {
+        // Use MP potion if low MP and have one
+        if (game.mp < 15 && game.items.includes('mpPotion')) {
+            const mi = game.items.indexOf('mpPotion');
+            this.debugInfo.reason = 'use MP potion';
+            return { action: 'use_item', itemIndex: mi + 1 };
+        }
+
+        // Use charm (defense buff) before boss fight or near enemies
+        if ((nearbyEnemy || (boss && boss.active)) && game.items.includes('charm') && !game.shieldBuff) {
             const ci = game.items.indexOf('charm');
             this.debugInfo.reason = 'use charm for defense';
             return { action: 'use_item', itemIndex: ci + 1 };
+        }
+
+        // Use shield (permanent ATK boost) when available
+        if (game.items.includes('shield')) {
+            const si = game.items.indexOf('shield');
+            this.debugInfo.reason = 'use shield for ATK boost';
+            return { action: 'use_item', itemIndex: si + 1 };
+        }
+
+        // Proactive heal (HP < 60% and not in combat)
+        if (game.hp < game.maxHp * 0.6 && !nearbyEnemy && !(boss && boss.active)) {
+            const pi = game.items.indexOf('potion');
+            if (pi !== -1) {
+                this.debugInfo.reason = 'proactive HP potion';
+                return { action: 'use_item', itemIndex: pi + 1 };
+            }
         }
 
         // Fight nearby enemies (they block movement due to collision)
